@@ -43,6 +43,11 @@ int main(int argc, char **argv) {
   double globalError = 0.0;
   bool useEpsCheck = false;
   switch (argc) {
+  case 1:
+    input_file = "";
+    output_file = "HW2_output.png";
+    reference_file = "HW2_reference.png";
+    break;
   case 2:
     input_file = std::string(argv[1]);
     output_file = "HW2_output.png";
@@ -87,8 +92,11 @@ int main(int argc, char **argv) {
   timer.Stop();
   cudaDeviceSynchronize();
   checkCudaErrors(cudaGetLastError());
-  int err = printf("Your code ran in: %f msecs.\n", timer.Elapsed());
-
+  auto elapsed = timer.Elapsed();
+  int err = printf("Your code ran in: %f msecs.\n", elapsed);
+  float bytes = numRows() * numCols() * 8 + filterWidth * filterWidth * sizeof(float);
+  printf("gbps: %f\n", bytes / elapsed / 1e6);
+  
   if (err < 0) {
     // Couldn't print! Probably the student closed stdout - bad news
     std::cerr << "Couldn't print timing information! STDOUT Closed!"
@@ -104,19 +112,21 @@ int main(int argc, char **argv) {
                              sizeof(uchar4) * numPixels,
                              cudaMemcpyDeviceToHost));
 
+  //goto skip_check;
   postProcess(output_file, h_outputImageRGBA);
 
   referenceCalculation(h_inputImageRGBA, h_outputImageRGBA, numRows(),
-                       numCols(), h_filter, filterWidth);
-
-  postProcess(reference_file, h_outputImageRGBA);
+		       numCols(), h_filter, filterWidth);
 
   //  Cheater easy way with OpenCV
-  // generateReferenceImage(input_file, reference_file, filterWidth);
+  //generateReferenceImage(input_file, reference_file, filterWidth);
+
+  postProcess(reference_file, h_outputImageRGBA);
 
   compareImages(reference_file, output_file, useEpsCheck, perPixelError,
                 globalError);
 
+ skip_check:
   checkCudaErrors(cudaFree(d_redBlurred));
   checkCudaErrors(cudaFree(d_greenBlurred));
   checkCudaErrors(cudaFree(d_blueBlurred));

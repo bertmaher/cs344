@@ -60,24 +60,19 @@ int main(int argc, char **argv) {
   preProcess(&h_rgbaImage, &h_greyImage, &d_rgbaImage, &d_greyImage,
              input_file);
 
-  GpuTimer timer;
-  timer.Start();
-  // call the students' code
-  your_rgba_to_greyscale(h_rgbaImage, d_rgbaImage, d_greyImage, numRows(),
-                         numCols());
-  timer.Stop();
-  cudaDeviceSynchronize();
-  checkCudaErrors(cudaGetLastError());
+  for (int i = 0; i < 20; i++) {
+    GpuTimer timer;
+    timer.Start();
+    // call the students' code
+    your_rgba_to_greyscale(h_rgbaImage, d_rgbaImage, d_greyImage, numRows(),
+			   numCols());
+    timer.Stop();
+    cudaDeviceSynchronize();
+    checkCudaErrors(cudaGetLastError());
 
-  int err = printf("Your code ran in: %f msecs.\n", timer.Elapsed());
-
-  if (err < 0) {
-    // Couldn't print! Probably the student closed stdout - bad news
-    std::cerr << "Couldn't print timing information! STDOUT Closed!"
-              << std::endl;
-    exit(1);
+    std::cout << "Your code ran in: " << std::chrono::duration<double, std::micro>(timer.Duration()).count() << " usecs, "
+	      << (float)numRows() * numCols() * 5 / timer.Elapsed() / 1e6 << " gb/s\n";
   }
-
   size_t numPixels = numRows() * numCols();
   checkCudaErrors(cudaMemcpy(h_greyImage, d_greyImage,
                              sizeof(unsigned char) * numPixels,

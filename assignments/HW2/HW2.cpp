@@ -31,17 +31,24 @@ void preProcess(uchar4 **h_inputImageRGBA, uchar4 **h_outputImageRGBA,
   // make sure the context initializes ok
   checkCudaErrors(cudaFree(0));
 
-  cv::Mat image = cv::imread(filename.c_str(), CV_LOAD_IMAGE_COLOR);
-  if (image.empty()) {
-    std::cerr << "Couldn't open file: " << filename << std::endl;
-    exit(1);
+  if (filename.empty()) {
+    auto size = 1 << 12;
+    imageInputRGBA = cv::Mat::eye(size, size, CV_8UC4);
+    imageOutputRGBA.create(size, size, CV_8UC4);
+    cv::imwrite("test.png", imageInputRGBA);
+  } else {
+    cv::Mat image = cv::imread(filename.c_str(), CV_LOAD_IMAGE_COLOR);
+    if (image.empty()) {
+      std::cerr << "Couldn't open file: " << filename << std::endl;
+      exit(1);
+    }
+
+    cv::cvtColor(image, imageInputRGBA, CV_BGR2RGBA);
+
+    // allocate memory for the output
+    imageOutputRGBA.create(image.rows, image.cols, CV_8UC4);
   }
-
-  cv::cvtColor(image, imageInputRGBA, CV_BGR2RGBA);
-
-  // allocate memory for the output
-  imageOutputRGBA.create(image.rows, image.cols, CV_8UC4);
-
+  
   // This shouldn't ever happen given the way the images are created
   // at least based upon my limited understanding of OpenCV, but better to check
   if (!imageInputRGBA.isContinuous() || !imageOutputRGBA.isContinuous()) {

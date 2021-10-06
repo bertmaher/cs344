@@ -48,6 +48,17 @@ __global__ void rgba_to_greyscale(const uchar4 *const rgbaImage,
   // First create a mapping from the 2D block and grid locations
   // to an absolute 2D location in the image, then use that to
   // calculate a 1D offset
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  for (; i < numRows * numCols; i += gridDim.x * blockDim.x) {
+    unsigned char r = rgbaImage[i].x;
+    unsigned char g = rgbaImage[i].y;
+    unsigned char b = rgbaImage[i].z;
+    greyImage[i] = .299f * r + .587f * g + .114f * b;
+  }
+}
+
+size_t ceildiv(size_t p, size_t q) {
+  return (p + q - 1) / q;
 }
 
 void your_rgba_to_greyscale(const uchar4 *const h_rgbaImage,
@@ -56,8 +67,15 @@ void your_rgba_to_greyscale(const uchar4 *const h_rgbaImage,
                             size_t numCols) {
   // You must fill in the correct sizes for the blockSize and gridSize
   // currently only one block with one thread is being launched
-  const dim3 blockSize(1, 1, 1); // TODO
-  const dim3 gridSize(1, 1, 1);  // TODO
+  size_t total = numRows * numCols;
+  size_t threads = 1024;
+  const dim3 blockSize(threads, 1, 1); // TODO
+  //const dim3 blockSize(557, 1, 1); // TODO
+  //const dim3 gridSize(ceildiv(total, threads), 1, 1);  // TODO
+  //printf("%zu\n", numRows);
+  const dim3 gridSize(ceildiv(total, threads), 1, 1);  // TODO
+  // const dim3 blockSize(numCols, 1, 1);
+  // const dim3 gridSize(numRows, 1, 1);
   rgba_to_greyscale<<<gridSize, blockSize>>>(d_rgbaImage, d_greyImage, numRows,
                                              numCols);
 

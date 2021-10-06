@@ -113,28 +113,56 @@
 __global__ void gaussian_blur(const unsigned char *const inputChannel,
                               unsigned char *const outputChannel, int numRows,
                               int numCols, const float *const filter,
-                              const int filterWidth) {
+                              const int filterWidthx) {
+  constexpr int filterWidth = 9;
   constexpr int tileSize = 32;
-  int c = blockIdx.x * blockDim.x + threadIdx.x;
-  if (c >= numCols) {
-    return;
+  constexpr int filterSq = filterWidth * filterWidth;
+  extern __shared__ float s_mem[];
+  float* s_filter = s_mem;
+  float* s_tile = s_mem + filterSq;
+  
+  // Fetch the filter.
+  for (int i = threadIdx.x; i < filterSq; i += blockDim.x) {
+    s_filter[i] = filter[i];
   }
 
-  int rStart = blockIdx.y * tileSize;
-  int rStop = min(rStart + tileSize, numRows);
+  // Fetch the tile.
+  int tileX = blockIdx.x * tileSize;
+  int tileY = blockIdx.y * tileSize;
+  int tileWidth = tileSize + filterWidth - 1;
 
-  for (int r = rStart; r < rStop; r++) {
-    float result = 0.0f;
-    for (int fr = -filterWidth / 2; fr <= filterWidth / 2; fr++) {
-      for (int fc = -filterWidth / 2; fc <= filterWidth / 2; fc++) {
-	int ir = min(max(r + fr, 0), numRows - 1);
-	int ic = min(max(c + fc, 0), numCols - 1);
-	float ipx = inputChannel[ir * numCols + ic];
-	float fpx = filter[(fr + filterWidth / 2) * filterWidth + fc + filterWidth / 2];
-	result += ipx * fpx;
+  for (int r = 0; r < tileWidth; r++) {
+    for (int c = threadIdx.x; c < tileWidth; c += tileSize) {
+      int inC = tileX + c - filterWidth / 2;
+      int inR = tileY + r - filterWidth / 2;
+      inC = min(max(inC, 0), numCols - 1);
+      inR = min(max(inR, 0), numRows - 1);
+      s_tile[r * tileWidth + c] = inputChannel[inR * numCols + inC];
+    }
+  }
+
+  __syncthreads();
+  
+  float result[tileSize] = {0.0f};
+  for (int fr = 0; fr < filterWidth; fr++) {
+    for (int fc = 0; fc < filterWidth; fc++) {
+      for (int r = 0; r < tileSize; r++) {
+	int tileR = r + fr;
+	int tileC = threadIdx.x + fc;
+	float ipx = s_tile[tileR * tileWidth + tileC];
+	float fpx = s_filter[fr * filterWidth + fc];
+	result[r] += ipx * fpx;
       }
     }
-    outputChannel[r * numCols + c] = result;
+  }
+  
+  int rStart = blockIdx.y * tileSize;
+  int rStop = min(rStart + tileSize, numRows);
+  int c = blockIdx.x * blockDim.x + threadIdx.x;
+  for (int r = rStart; r < rStop; r++) {
+    if (c < numCols) {
+      outputChannel[r * numCols + c] = result[r - rStart];
+    }
   }
 }
 
@@ -154,17 +182,6 @@ __global__ void separateChannels(const uchar4 *const inputImageRGBA,
     greenChannel[i] = rgba.y;
     blueChannel[i] = rgba.z;
   }
-  // TODO
-  //
-  // NOTE: Be careful not to try to access memory that is outside the bounds of
-  // the image. You'll want code that performs the following check before
-  // accessing GPU memory:
-  //
-  // if ( absolute_image_position_x >= numCols ||
-  //      absolute_image_position_y >= numRows )
-  // {
-  //     return;
-  // }
 }
 
 // This kernel takes in three color channels and recombines them
@@ -213,20 +230,9 @@ void allocateMemoryAndCopyToGPU(const size_t numRowsImage,
   checkCudaErrors(
       cudaMalloc(&d_blue, sizeof(unsigned char) * numRowsImage * numColsImage));
 
-  // TODO:
-  // Allocate memory for the filter on the GPU
-  // Use the pointer d_filter that we have already declared for you
-  // You need to allocate memory for the filter with cudaMalloc
-  // be sure to use checkCudaErrors like the above examples to
-  // be able to tell if anything goes wrong
-  // IMPORTANT: Notice that we pass a pointer to a pointer to cudaMalloc
   size_t filterSize = sizeof(float) * filterWidth * filterWidth;
   checkCudaErrors(cudaMalloc(&d_filter, filterSize));
 		  
-  // TODO:
-  // Copy the filter on the host (h_filter) to the memory you just allocated
-  // on the GPU.  cudaMemcpy(dst, src, numBytes, cudaMemcpyHostToDevice);
-  // Remember to use checkCudaErrors!
   checkCudaErrors(cudaMemcpy(d_filter, h_filter__, filterSize, cudaMemcpyHostToDevice));
 }
 
@@ -280,6 +286,7 @@ void your_gaussian_blur(const uchar4 *const h_inputImageRGBA,
   GpuTimer t;
   auto bytes = numRows * numCols * sizeof(char) * 2;
   auto flops = numRows * numCols * filterWidth * filterWidth * 2;
+
   size_t filterBytes = filterWidth * filterWidth * sizeof(float);
   size_t tileBytes = (xBlock + filterWidth - 1) * (yBlock + filterWidth - 1) * sizeof(float);
   size_t shmemBytes = filterBytes + tileBytes;

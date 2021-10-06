@@ -2,7 +2,10 @@
 #define GPU_TIMER_H__
 
 #include <cuda_runtime.h>
+#include <chrono>
 
+using cuda_milliseconds = std::chrono::duration<float, std::milli>;
+  
 struct GpuTimer {
   cudaEvent_t start;
   cudaEvent_t stop;
@@ -26,6 +29,10 @@ struct GpuTimer {
     cudaEventSynchronize(stop);
     cudaEventElapsedTime(&elapsed, start, stop);
     return elapsed;
+  }
+
+  cuda_milliseconds Duration() {
+    return cuda_milliseconds(Elapsed());
   }
 };
 
